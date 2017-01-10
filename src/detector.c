@@ -353,7 +353,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
         if(fps) fclose(fps[j]);
     }
     if(coco){
-        fseek(fp, -2, SEEK_CUR); 
+        fseek(fp, -2, SEEK_CUR);
         fprintf(fp, "\n]\n");
         fclose(fp);
     }
@@ -495,6 +495,67 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
 #endif
         if (filename) break;
     }
+}
+
+
+void test_detector_python(char *datacfg, char *cfgfile, char *weightfile, float* data, int h, int w, int c, float thresh, float hier_thresh, float* out)
+{
+    list *options = read_data_cfg(datacfg);
+    char *name_list = option_find_str(options, "names", "data/names.list");
+    char **names = get_labels(name_list);
+
+    image **alphabet = load_alphabet();
+    network net = parse_network_cfg(cfgfile);
+    if(weightfile){
+        load_weights(&net, weightfile);
+    }
+    set_batch_network(&net, 1);
+    srand(2222222);
+    clock_t time;
+    char buff[256];
+    char *input = buff;
+    int j;
+    float nms=.4;
+
+    image im;
+    im.h = h;
+    im.w = w;
+    im.c = c;
+    im.data = data;
+    image sized = resize_image(im, net.w, net.h);
+    layer l = net.layers[net.n-1];
+
+    box *boxes = calloc(l.w*l.h*l.n, sizeof(box));
+    float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
+    for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(l.classes + 1, sizeof(float *));
+
+    float *X = sized.data;
+    time=clock();
+    network_predict(net, X);
+    printf("%s: Predicted in %f seconds.\n", input, sec(clock()-time));
+    get_region_boxes(l, 1, 1, thresh, probs, boxes, 0, 0, hier_thresh);
+    if (l.softmax_tree && nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
+    else if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);
+    // write detection to the out
+    int num = l.w*l.h*l.n;
+    for(int i = 0; i < num; i++){
+        out[4*i] = boxes[i].x;
+        out[4*i+1] = boxes[i].y;
+        out[4*i+2] = boxes[i].w;
+        out[4*i+3] = boxes[i].h;
+    }
+    for(int i = 0; i < num; i++){
+        for(int j = 0; j< l.classes; j++){
+            out[4*num+ i*l.classes+j] = probs[i][j];
+        }
+    }
+
+    /*draw_detections(im, l.w*l.h*l.n, thresh, boxes, probs, names, alphabet, l.classes);
+    return im.data;
+    free_image(im);
+    free_image(sized);
+    free(boxes);
+    free_ptrs((void **)probs, l.w*l.h*l.n);*/
 }
 
 void run_detector(int argc, char **argv)
