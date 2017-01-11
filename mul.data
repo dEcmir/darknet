@@ -1,0 +1,6 @@
+classes= 18 
+train  = /home/pierre/darknet/train.txt
+valid  = /home/pierre/darknet/test.txt
+names = data/multiblocks.names
+backup = /home/pierre/backup/
+
