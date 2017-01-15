@@ -29,7 +29,7 @@ libdarknet.test_detector_python.argtypes = [ctypes.c_char_p, ctypes.c_char_p,
 
 # set the return type
 #libdarknet.test_detector_python.restype = c_float_p
-
+BATCH_SIZE = 64
 
 def detector(datacfg, cfgfile, weightfile, data, h, w, c, thresh, hier_thresh):
     ''' a detector '''
@@ -46,20 +46,20 @@ def detector(datacfg, cfgfile, weightfile, data, h, w, c, thresh, hier_thresh):
     data = data.astype(np.float32)
     data_p = data.ctypes.data_as(c_float_p)
 
-    out = np.empty(13 * 13 * 115 * (4 + 18), dtype="float32")
-    out_p = out.ctypes.data_as(c_float_p)
+    out = np.empty(13 * 13 * 115 * BATCH_SIZE, dtype="float32")
     libdarknet.test_detector_python(datacfg_c, cfgfile_c, weightfile_c,
                                     data.flatten(), h_c, w_c, c_c, thresh_c,
                                     hier_thresh_c, out)
-    boxes = out[:13*13*115*4].reshape((-1, 4))
-    confs = out[13*13*115*4:].reshape((-1, 18))
-    return boxes, confs
-im = PIL.Image.open(
-    "/home/pierre/lego-assembly-helper/multiblocks_val/images/0b2b390a-c47d-"
-    "4a4f-b9bf-45c2564e1f16.jpg")
-import pdb
-pdb.set_trace()
-boxes, confs = detector("/home/pierre/darknet/cfg/voc.data",
-                        "/home/pierre/darknet/cfg/yolo-voc.cfg",
-                        "/home/pierre/backup/5blocksyolo-voc_9000.weights",
-                        np.array(im), im.size[0], im.size[1], 3, 0.24, 0.5)
+
+    return out
+
+imgdir = "/home/pierre/lego-assembly-helper/dataset/output_dataset/images"
+batch = np.empty((BATCH_SIZE, 416, 416, 3), dtype='float32')
+for i, image in enumerate(os.listdir(imgdir)[:BATCH_SIZE]):
+    im = PIL.Image.open(os.path.join(imgdir, image))
+    batch[i] = np.array(im.resize((416, 416))).astype(np.float32)
+
+res = detector("mul.data", "yolo-mul2.cfg",
+               "/home/pierre/backup/yolo-mul_16000.weights",
+               batch, im.size[0], im.size[1], 3, 0.24, 0.5)
+import pdb; pdb.set_trace()

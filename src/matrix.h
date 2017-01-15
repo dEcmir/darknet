@@ -11,6 +11,7 @@ void print_matrix(matrix m);
 
 matrix csv_to_matrix(char *filename);
 void matrix_to_csv(matrix m);
+void matrix_to_csv_file(matrix m, char *filename);
 matrix hold_out_matrix(matrix *m, int n);
 float matrix_topk_accuracy(matrix truth, matrix guess, int k);
 void matrix_add_matrix(matrix from, matrix to);

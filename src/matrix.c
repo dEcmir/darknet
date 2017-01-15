@@ -156,6 +156,30 @@ void matrix_to_csv(matrix m)
     }
 }
 
+
+void matrix_to_csv_file(matrix m, char* outputFilename)
+{
+    FILE *ofp;
+
+
+    ofp = fopen(outputFilename, "w");
+    if (ofp == NULL) {
+       fprintf(stderr, "Can't open output file %s!\n",
+             outputFilename);
+     exit(1);
+    }
+    int i, j;
+
+    for(i = 0; i < m.rows; ++i){
+        for(j = 0; j < m.cols; ++j){
+            if(j > 0) fprintf(ofp,",");
+            fprintf(ofp,"%.17g", m.vals[i][j]);
+        }
+        fprintf(ofp,"\n");
+    }
+    fclose(ofp);
+}
+
 void print_matrix(matrix m)
 {
     int i, j;

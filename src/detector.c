@@ -6,12 +6,102 @@
 #include "box.h"
 #include "demo.h"
 #include "option_list.h"
+#include "matrix.h"
 
 #ifdef OPENCV
 #include "opencv2/highgui/highgui_c.h"
 #endif
 static int coco_ids[] = {1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90};
 
+void multiple_forward(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear)
+{
+    list *options = read_data_cfg(datacfg);
+    char *train_images = option_find_str(options, "train", "data/train.list");
+    char *backup_directory = option_find_str(options, "backup", "/backup/");
+
+    srand(time(0));
+    char *base = basecfg(cfgfile);
+    printf("%s\n", base);
+    network *nets = calloc(ngpus, sizeof(network));
+
+    srand(time(0));
+    int seed = rand();
+    int i;
+    for(i = 0; i < ngpus; ++i){
+        srand(seed);
+#ifdef GPU
+        cuda_set_device(gpus[i]);
+#endif
+        nets[i] = parse_network_cfg(cfgfile);
+        if(weightfile){
+            load_weights(&nets[i], weightfile);
+        }
+        if(clear) *nets[i].seen = 0;
+        nets[i].learning_rate *= ngpus;
+    }
+    srand(time(0));
+    network net = nets[0];
+
+    int imgs = net.batch * net.subdivisions * ngpus;
+    printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
+    data train, buffer;
+
+    layer l = net.layers[net.n - 1];
+
+    int classes = l.classes;
+    float jitter = l.jitter;
+
+    list *plist = get_paths(train_images);
+    //int N = plist->size;
+    char **paths = (char **)list_to_array(plist);
+
+    load_args args = {0};
+    args.w = net.w;
+    args.h = net.h;
+    args.paths = paths;
+    args.n = imgs;
+    args.m = plist->size;
+    args.classes = classes;
+    args.jitter = jitter;
+    args.num_boxes = l.max_boxes;
+    args.d = &buffer;
+    args.type = DETECTION_DATA;
+    args.threads = 8;
+
+    args.angle = net.angle;
+    args.exposure = net.exposure;
+    args.saturation = net.saturation;
+    args.hue = net.hue;
+
+    pthread_t load_thread = load_data(args);
+    clock_t time;
+    int count = 0;
+    //while(i*imgs < N*120){
+    while(get_current_batch(net) < net.max_batches){
+
+        time=clock();
+        pthread_join(load_thread, 0);
+        train = buffer;
+        load_thread = load_data(args);
+
+        matrix m = network_predict_data(net, train);
+        char str[5];
+
+        sprintf(str, "%d", count);
+        count++;
+        char filename[9];
+        for(int index =0; index< 5; index++)
+            filename[index] = str[index];
+        filename[5] = '.';
+        filename[6] = 'c';
+        filename[7] = 's';
+        filename[8] = 'v';
+        printf("%s \n", str);
+        matrix_to_csv_file(m, str);
+        i = get_current_batch(net);
+        free_data(train);
+    }
+}
 void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear)
 {
     list *options = read_data_cfg(datacfg);
@@ -531,7 +621,9 @@ void test_detector_python(char *datacfg, char *cfgfile, char *weightfile, float*
 
     float *X = sized.data;
     time=clock();
-    network_predict(net, X);
+
+    float* res = network_predict(net, X);
+
     printf("%s: Predicted in %f seconds.\n", input, sec(clock()-time));
     get_region_boxes(l, 1, 1, thresh, probs, boxes, 0, 0, hier_thresh);
     if (l.softmax_tree && nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
@@ -550,12 +642,6 @@ void test_detector_python(char *datacfg, char *cfgfile, char *weightfile, float*
         }
     }
 
-    /*draw_detections(im, l.w*l.h*l.n, thresh, boxes, probs, names, alphabet, l.classes);
-    return im.data;
-    free_image(im);
-    free_image(sized);
-    free(boxes);
-    free_ptrs((void **)probs, l.w*l.h*l.n);*/
 }
 
 void run_detector(int argc, char **argv)
@@ -601,6 +687,8 @@ void run_detector(int argc, char **argv)
     char *filename = (argc > 6) ? argv[6]: 0;
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh);
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
+    else if(0==strcmp(argv[2], "mult")) multiple_forward(datacfg, cfg, weights, gpus, ngpus, clear);
+
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "recall")) validate_detector_recall(cfg, weights);
     else if(0==strcmp(argv[2], "demo")) {
