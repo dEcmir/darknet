@@ -4,10 +4,10 @@ from ctypes.util import find_library
 import numpy as np
 import numpy.ctypeslib as npct
 import PIL.Image
+
+c_float_p = ctypes.POINTER(ctypes.c_float)
 # find and load the library
-
 # OSX or linux
-
 basepath = os.path.dirname(os.path.abspath(__file__))
 dllspath = os.path.join(basepath, 'libdarknet.so')
 os.environ['PATH'] = dllspath + os.pathsep + os.environ['PATH']
@@ -25,9 +25,8 @@ libdarknet.test_detector_python.argtypes = [ctypes.c_char_p, ctypes.c_char_p,
                                             ctypes.c_int,
                                             ctypes.c_float, ctypes.c_float, array_1d_float]
 
-# set the return type
+# set the return type here none
 
-BATCH_SIZE = 64
 
 def detector(datacfg, cfgfile, weightfile, data, h, w, c, thresh, hier_thresh):
     ''' a detector '''
@@ -44,7 +43,7 @@ def detector(datacfg, cfgfile, weightfile, data, h, w, c, thresh, hier_thresh):
     data = data.astype(np.float32)
     data_p = data.ctypes.data_as(c_float_p)
 
-    out = np.empty(13 * 13 * 115 * BATCH_SIZE, dtype="float32")
+    out = np.empty(13 * 13 * 115, dtype="float32")
     libdarknet.test_detector_python(datacfg_c, cfgfile_c, weightfile_c,
                                     data.flatten(), h_c, w_c, c_c, thresh_c,
                                     hier_thresh_c, out)
